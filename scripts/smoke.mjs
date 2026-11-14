@@ -5,7 +5,7 @@ for(const [path,status] of [['/',200],['/health',200],['/ready',200],['/api/plat
  if(r.status!==status)throw new Error(`${path}: expected ${status}, received ${r.status}`);
  const body=await r.text();
  if(path==='/health'){const h=JSON.parse(body);if(h.ok!==true||h.realCreditDataEnabled!==false)throw new Error('Unexpected live-data state');}
- if(path==='/api/platform'){const p=JSON.parse(body);if(p.version!=='0.3.0'||p.accountsConfigured||p.features.liveCredit||p.features.taxFiling)throw new Error('Unexpected platform boundary');}
+ if(path==='/api/platform'){const p=JSON.parse(body);if(p.version!=='0.3.1'||p.accountsConfigured||p.features.liveCredit||p.features.taxFiling)throw new Error('Unexpected platform boundary');}
  if(path==='/'&&!body.includes('CREDIT CHAMPION'))throw new Error('Homepage is not Credit Champion');
  console.log(JSON.stringify({path,status:r.status,checkedAt:new Date().toISOString()}));
 }

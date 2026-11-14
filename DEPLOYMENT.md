@@ -1,6 +1,6 @@
 # Credit Champion staging deployment
 
-This release is a synthetic-data demonstration. Real credit processing, registration, uploads, paid subscriptions, and outbound submissions are not implemented or enabled.
+This release is a synthetic-data demonstration. Real credit processing, public registration, uploads, paid subscriptions, and outbound submissions are not enabled.
 
 ## Build and run
 
@@ -56,6 +56,12 @@ The source archive includes the `public/`, `migrations/` and `scripts/` director
 
 Hostinger's current archive flow runs npm install and npm run build. Full tests and audit run locally and in the repository validation workflow; do not claim the hosted build executes the test suite unless logs show that.
 
-No PostgreSQL database or private-account secrets are provisioned by this deployment. Keep ACCOUNT_MODE unset. Verify `/api/platform` reports version 0.3.0, accountsConfigured=false, liveCredit=false and taxFiling=false. `node scripts/smoke.mjs` checks the expected public staging boundaries.
+No PostgreSQL database or private-account secrets are provisioned by this deployment. Keep ACCOUNT_MODE unset. Verify `/api/platform` reports version 0.3.1, accountsConfigured=false, liveCredit=false and taxFiling=false. `node scripts/smoke.mjs` checks the expected public staging boundaries.
 
 The scheduled repository observation workflow has no custom message destination and is not a substitute for independent uptime monitoring. Check hosted workflow execution before reporting it operational.
+
+## Staged-editor fallback
+
+When browser local-file access is unavailable and a server-side archive cannot be retained, `scripts/prepare-editor-release.mjs FULL_COMMIT TEMP_OUTPUT_DIRECTORY` creates a text-only restoration package from tracked files at a pinned commit. Its SHA-256 check guards the embedded source. Stage its package.json and restore-release.mjs in this site’s hbuilds/last-source using the official editor, apply those staged files, then redeploy using previous source. The build restores the exact source, installs the lockfile, validates TypeScript, runs 18 network-free tests and compiles. The full 22-test suite stays in local and GitHub validation. Hostinger loopback HTTP integration tests returned fetch failures in its build environment; those are not reported as hosted passes. Verify HTTP contracts against the live HTTPS site after build. The source archive label may retain an older filename; use the restored pinned commit printed in logs, build UUID and platform version to identify the release.
+
+The generated restoration files are temporary deployment material. GitHub source remains canonical. No credentials, customer data or local browser permissions are added by this route.

@@ -1,21 +1,9 @@
-# Champion Funding Marketplace — implementation plan
+# Champion Funding Marketplace
 
-## Included now
-- Pure TypeScript preliminary matching engine
-- Synthetic tests for mismatch, missing information and possible matches
-- Small curated source directory for SBA and CDFI discovery
-- Explicit warnings that matching is not underwriting or approval
+The live public release exposes 15 curated source entries through `/api/funding` and the Funding marketplace interface. Products, programs and institution/grant directories are distinguished. Preliminary research filters use purpose, state, score, revenue, business age and requested amount where a selected source supplies criteria.
 
-## Not yet included
-- Real-time bank product catalogs or affiliate agreements
-- Consumer report ingestion, soft-pull APIs or credit score access
-- Nationwide bank and credit union ETL, live grant listings, or geographic verification
-- Customer identity verification, consent, lender application submission or protected data storage
-- Paid subscriptions, offers, or lender referral tracking
+Every current entry has incomplete underwriting marked explicitly, so no current entry is represented as a verified eligible offer. APR, fees, complete service area, guarantees, hard/soft inquiries, reporting and deadline criteria require direct provider review. Entries with stale, invalid or future verification dates need re-verification. Expired opportunity records are excluded by the matching library. A directory is never treated as an approval or grant award.
 
-## Compliance gates
-- Verify every lender and product source, effective date, rates, reporting policies, eligibility and state restrictions
-- Disclose referral compensation and avoid discriminatory eligibility or misleading approvals
-- Do not collect SSNs, DOB, bank credentials or credit reports through demo endpoints
-- Do not claim credit score improvements, immediate deletions or guaranteed funding
-- Consult legal counsel on FCRA, ECOA, GLBA, CROA, state lending and referral rules before production
+Sources include SBA, Grants.gov, CDFI Fund, NCUA, Chase, Wells Fargo, U.S. Bank, Bank of America, Ford Pro, GM Financial, LiftFund and DreamSpring. This release does not include all community banks, a live nationwide institution import or an open grant inventory. No application, hard inquiry or provider data transmission occurs.
+
+Next: official institution adapters, normalization/deduplication, individual opportunity records with deadlines and provenance, geographic/member eligibility, costs, provider reporting evidence, refresh jobs and approved notification delivery. Those integrations remain unimplemented; no background search or automatic application service is claimed.
