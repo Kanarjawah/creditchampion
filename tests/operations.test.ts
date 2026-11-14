@@ -38,6 +38,7 @@ async function verifyOperations(db:DB){
  const secret=await (await post('/mfa/enroll',{})).json();assert.equal((await post('/mfa/verify',{code:totp(secret.secret,Math.floor(Date.now()/30000))})).status,200);assert.equal((await fetch(url+'/api/account/operations',{headers:{Cookie:cookie}})).status,200);assert.equal((await post('/invoices/'+invoice.id+'/checkout',{})).status,503);assert.equal((await post('/logout',{})).status,200);
  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
 
+ const owner=await store.register(crypt.lookup('owner@example.test'),crypt.encrypt('owner@example.test'),hash,false,true);assert.equal(owner.role,'agency_owner');await assert.rejects(()=>store.register(crypt.lookup('second-owner@example.test'),crypt.encrypt('second-owner@example.test'),hash,false,true));
  const audit=(await db.query('SELECT action FROM audit_events WHERE tenant_id=$1',[client.tenant_id])).rows;assert.ok(audit.some(r=>r.action==='document.downloaded'));assert.ok(audit.some(r=>r.action==='agreement.cancelled'));
 }
 test('agency workflows enforce tenant scope, roles, booking state, agreements, encrypted vault and consented follow-up',async()=>{const db=new PGlite();try{for(const file of (await readdir(new URL('../migrations/',import.meta.url))).filter(x=>x.endsWith('.sql')).sort())await db.exec(await readFile(new URL('../migrations/'+file,import.meta.url),'utf8'));await verifyOperations(db as unknown as DB);}finally{await db.close();}});

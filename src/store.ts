@@ -5,9 +5,9 @@ export type Actor={id:string;tenant_id:string;role:string;mfa_enabled:boolean;mf
 const staff=new Set(['super_admin','compliance_admin','credit_specialist','agency_owner','agency_employee']);
 export class Store {
  constructor(public db:DB){}
- async register(emailLookup:string,emailCipher:string,passwordHash:string,business:boolean){
+ async register(emailLookup:string,emailCipher:string,passwordHash:string,business:boolean,claimOwner=false){
   const tenant=randomUUID(),id=randomUUID();
-  return transaction(this.db,async db=>{await db.query('INSERT INTO tenants(id) VALUES($1)',[tenant]);return (await db.query('INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,tenant_id,role,mfa_enabled',[id,tenant,emailLookup,emailCipher,passwordHash,business?'business_customer':'individual_customer'])).rows[0] as Actor;});
+  return transaction(this.db,async db=>{if(claimOwner){const bootstrap=(await db.query('SELECT owner_id FROM owner_bootstrap WHERE id=$1 FOR UPDATE',['00000000-0000-4000-8000-000000000001'])).rows[0];if(!bootstrap||bootstrap.owner_id)throw Object.assign(new Error('Owner already claimed'),{code:'OWNER_CLAIMED'});}await db.query('INSERT INTO tenants(id) VALUES($1)',[tenant]);const user=(await db.query('INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,tenant_id,role,mfa_enabled',[id,tenant,emailLookup,emailCipher,passwordHash,claimOwner?'agency_owner':business?'business_customer':'individual_customer'])).rows[0] as Actor;if(claimOwner)await db.query('UPDATE owner_bootstrap SET owner_id=$1,claimed_at=now() WHERE id=$2',[id,'00000000-0000-4000-8000-000000000001']);return user;});
  }
  async byEmail(lookup:string){return (await this.db.query('SELECT * FROM users WHERE email_lookup=$1',[lookup])).rows[0];}
  async createSession(hash:string,user:string){await this.db.query(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '10 minutes')`,[hash,user]);}
