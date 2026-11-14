@@ -36,4 +36,6 @@ jobs:
           DATABASE_URL: ${{ env.TEST_MYSQL_URL }}
       - run: npm test
       - run: npm run build
+      - name: Check Hostinger-compatible CommonJS entry loading
+        run: node --input-type=commonjs -e "require('./dist/server.js');setTimeout(()=>process.exit(0),500)"
       - run: npm audit
