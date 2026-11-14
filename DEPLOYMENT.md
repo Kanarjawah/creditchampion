@@ -49,3 +49,13 @@ Record the actual staging URL, deployed commit, build logs, HTTPS result, and ac
 ## Production gates
 
 Before real customers: implement authentication and MFA, database migrations, tenant isolation, protected storage, consent evidence, audit records, rate limits, monitored jobs, backup and restore, provider agreements, reviewed jurisdiction rules, billing controls, and independent security testing. A dependency audit and demo HTTP tests do not establish production readiness.
+
+## v0.3 hosting notes
+
+The source archive includes the `public/`, `migrations/` and `scripts/` directories. Keep the Express entry file as `dist/server.js`; default detection may incorrectly choose `server.js`. Set `NPM_CONFIG_INCLUDE=dev` along with `NODE_ENV=production` so the build can run TypeScript. Do not set PORT manually.
+
+Hostinger's current archive flow runs npm install and npm run build. Full tests and audit run locally and in the repository validation workflow; do not claim the hosted build executes the test suite unless logs show that.
+
+No PostgreSQL database or private-account secrets are provisioned by this deployment. Keep ACCOUNT_MODE unset. Verify `/api/platform` reports version 0.3.0, accountsConfigured=false, liveCredit=false and taxFiling=false. `node scripts/smoke.mjs` checks the expected public staging boundaries.
+
+The scheduled repository observation workflow has no custom message destination and is not a substitute for independent uptime monitoring. Check hosted workflow execution before reporting it operational.

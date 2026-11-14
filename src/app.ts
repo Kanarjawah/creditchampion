@@ -1,19 +1,46 @@
 import express from 'express';
+import helmet from 'helmet';
+import {rateLimit} from 'express-rate-limit';
+import {fileURLToPath} from 'node:url';
 import {z} from 'zod';
 import {canSubmit,plan90Days,type Case} from './engine.js';
 import {scheduledTasks} from './workflow.js';
-export const app=express();
-app.disable('x-powered-by');
-app.use((_req,res,next)=>{res.set({'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'});next()});
-app.use(express.json({limit:'100kb'}));
-app.get('/health',(_req,res)=>res.json({ok:true,environment:'demo',realCreditDataEnabled:false}));
-app.get('/api/demo/plan/:day',(req,res)=>{try{res.json({...plan90Days(Number(req.params.day)),...scheduledTasks(Number(req.params.day))})}catch{res.status(400).json({error:'Day must be an integer from 1 to 90'})}});
-const caseSchema=z.object({id:z.string(),customerId:z.string(),status:z.enum(['intake','needs_evidence','awaiting_approval','ready_to_send','submitted','awaiting_response','resolved','escalated']),findings:z.array(z.object({id:z.string(),category:z.string(),description:z.string(),evidence:z.array(z.string()),verified:z.boolean()})),consent:z.boolean(),approved:z.boolean(),legalRuleVerified:z.boolean(),delivery:z.object({tracking:z.string(),sentAt:z.string()}).optional()});
-app.post('/api/demo/dispute/check',(req,res)=>{const parsed=caseSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Invalid case',details:z.flattenError(parsed.error)});res.json(canSubmit(parsed.data as Case))});
-app.get('/',(_req,res)=>res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Credit Champion Demo</title><style>body{font:16px system-ui;background:#0b1730;color:#eef5ff;margin:0}main{max-width:900px;margin:5rem auto;padding:2rem}.card{background:#172949;padding:2rem;border-radius:18px;margin:1rem 0}button{background:#59b8e8;border:0;padding:1rem;border-radius:8px;cursor:pointer}input{padding:1rem;width:90px}small{color:#b7c9df}</style></head><body><main><h1>CREDIT CHAMPION</h1><p>Your credit health journey, made clearer.</p><div class="card"><h2>90-day credit health plan</h2><label>Day <input id="day" type="number" min="1" max="90" value="1"></label> <button onclick="load()">View my plan</button><div id="result"></div></div><div class="card"><h2>Built with safeguards</h2><p>Evidence-based disputes, customer authorization, legal review and transparent tracking.</p><small>Demo only. No real credit report access, submissions, payment processing or guaranteed score changes.</small></div></main><script>async function load(){const r=await fetch('/api/demo/plan/'+document.getElementById('day').value);const x=await r.json();document.getElementById('result').textContent=x.phase?x.phase+' | '+x.actions.join(' • '):x.error}load()</script></body></html>`));
-
-app.use((_req,res)=>{res.status(404).json({error:'Not found'})});
-app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
- const status=typeof error==='object'&&error!==null&&'status' in error?Number(error.status):500;
- res.status(status===413?413:status===400?400:500).json({error:status===413?'Request too large':status===400?'Invalid JSON request':'Internal server error'});
-});
+import {guides,sources,complianceRules} from './knowledge.js';
+import {fundingProducts} from './funding-data.js';
+import {matchFunding} from './funding.js';
+import {loanEstimate,loanSchema,utilization,utilizationSchema,cashflow,cashflowSchema,reviewIssue,issueSchema} from './tools.js';
+import {accounts,accountConfig,type AccountConfig} from './accounts.js';
+import {configuredStore,type Store} from './store.js';
+export function createApp(store?:Store,config:AccountConfig=accountConfig()){
+ const app=express();
+ app.disable('x-powered-by');
+ app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'","data:"],connectSrc:["'self'"],frameAncestors:["'none'"],formAction:["'self'"],baseUri:["'none'"]}},referrerPolicy:{policy:'no-referrer'}}));
+ app.use((_req,res,next)=>{res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'});next();});
+ app.use(express.json({limit:'100kb'}));
+ app.get('/health',(_req,res)=>res.json({ok:true,environment:'demo',realCreditDataEnabled:false}));
+ app.get('/ready',async(_req,res)=>{if(config.enabled){if(!store)return res.status(503).json({ready:false});await store.db.query('SELECT 1');}res.json({ready:true,mode:'synthetic_staging'});});
+ app.use('/api',rateLimit({windowMs:60*1000,limit:300,standardHeaders:'draft-7',legacyHeaders:false}));
+ app.get('/api/platform',(_req,res)=>res.json({name:'Credit Champion',version:'0.3.0',mode:'synthetic_staging',realCreditDataEnabled:false,accountsConfigured:!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode),features:{education:true,planning:true,fundingDirectory:true,loanCalculator:true,utilizationCalculator:true,cashflowCalculator:true,disputeReview:true,liveCredit:false,uploads:false,payments:false,taxFiling:false,bankruptcyFiling:false,aiProvider:false},roles:['Super Administrator','Compliance Administrator','Credit Specialist','Agency Owner','Agency Employee','Individual Customer','Business Customer','Customer Support'],reliability:{target:'99.9%',measuredUptime:null,status:'Not measured; single staging instance, no high-availability guarantee'}}));
+ app.get('/api/guides',(_req,res)=>res.json({guides,sources}));
+ app.get('/api/compliance',(_req,res)=>res.json({rules:complianceRules,reviewedAt:'2026-11-13',liveServicesEnabled:false}));
+ app.get('/api/funding',(_req,res)=>res.json({products:fundingProducts,disclosure:'Curated source directory, not a nationwide feed, open grant inventory, lender endorsement or credit offer. Unknown criteria require provider review.'}));
+ const profileSchema=z.object({purpose:z.enum(['business','personal']),state:z.string().regex(/^[A-Za-z]{2}$/),creditScore:z.number().int().min(300).max(850).optional(),annualRevenue:z.number().finite().min(0).max(1e12).optional(),yearsBusiness:z.number().finite().min(0).max(200).optional(),desiredAmount:z.number().finite().positive().max(1e9).optional()}).strict();
+ app.post('/api/funding/match',(req,res)=>{const p=profileSchema.parse(req.body);res.json({matches:matchFunding(p,fundingProducts),disclosure:'Preliminary education only. A match is not approval or prequalification; no credit pull or application occurs.'});});
+ app.post('/api/tools/loan',(req,res)=>res.json(loanEstimate(loanSchema.parse(req.body))));
+ app.post('/api/tools/utilization',(req,res)=>res.json(utilization(utilizationSchema.parse(req.body))));
+ app.post('/api/tools/cashflow',(req,res)=>res.json(cashflow(cashflowSchema.parse(req.body))));
+ app.post('/api/tools/issue-review',(req,res)=>res.json(reviewIssue(issueSchema.parse(req.body))));
+ app.get('/api/demo/plan/:day',(req,res)=>{try{res.json({...plan90Days(Number(req.params.day)),...scheduledTasks(Number(req.params.day))});}catch{res.status(400).json({error:'Day must be an integer from 1 to 90'});}});
+ const caseSchema=z.object({id:z.string(),customerId:z.string(),status:z.enum(['intake','needs_evidence','awaiting_approval','ready_to_send','submitted','awaiting_response','resolved','escalated']),findings:z.array(z.object({id:z.string(),category:z.string(),description:z.string(),evidence:z.array(z.string()),verified:z.boolean()})),consent:z.boolean(),approved:z.boolean(),legalRuleVerified:z.boolean(),delivery:z.object({tracking:z.string(),sentAt:z.string()}).optional()});
+ app.post('/api/demo/dispute/check',(req,res)=>{const parsed=caseSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Invalid case',details:z.flattenError(parsed.error)});res.json(canSubmit(parsed.data as Case));});
+ app.use('/api/account',accounts(store,config));
+ app.use(express.static(fileURLToPath(new URL('../public/',import.meta.url)),{etag:false,lastModified:false,index:'index.html'}));
+ app.use((_req,res)=>res.status(404).json({error:'Not found'}));
+ app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
+  if(error instanceof z.ZodError)return res.status(400).json({error:'Invalid input. Check the field ranges and use synthetic values only.'});
+  const status=typeof error==='object'&&error!==null&&'status' in error?Number(error.status):500;
+  res.status(status===413?413:status===400?400:500).json({error:status===413?'Request too large':status===400?'Invalid JSON request':'Internal server error'});
+ });
+ return app;
+}
+export const app=createApp(configuredStore());

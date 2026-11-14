@@ -1,34 +1,38 @@
 # Credit Champion
 
-Credit Champion is a compliance-first credit health and dispute-workflow prototype.
+Credit education, business funding discovery and financial planning workspace. This repository deploys to an isolated Hostinger staging app, using synthetic data only.
 
-Status: demonstration only. The application uses synthetic inputs and must not be used to process live credit reports, submit disputes, collect regulated fees, or promise score increases.
+## Run locally
 
-## Start
+Use Node.js 22 (or supported Node 24):
 
 ```sh
 npm ci
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-## Test
-
-```sh
+npm run typecheck
 npm test
+npm run build
+npm start
 ```
 
-## Demo routes
+Open http://localhost:3000. The runtime entry is `dist/server.js`; public assets are served from the committed `public/` directory. No database is required for education and calculators.
 
-- `GET /health` — service health
-- `GET /api/demo/plan/1` — illustrative 90-day plan
-- `POST /api/demo/dispute/check` — safety gating for a supplied synthetic dispute case
+## Modules
 
-## Launch gates
+- Credit education, evidence-first issue review and 90-day plans.
+- Funding directory and preliminary criteria research, including business vehicle providers and personal credit-line discovery.
+- Loan cost, utilization, cash coverage and business-mileage-share planners.
+- Bankruptcy Chapters 7/13 comparison and preparation steps; tax recordkeeping and business-vehicle education.
+- Synthetic agency workflow preview and transparent capability status.
+- Gated PostgreSQL accounts, MFA, sessions, scoped cases and audit metadata.
 
-Production deployment requires secure user authentication, isolated tenant storage, customer consent, verified jurisdictional legal requirements, provider agreements, security assessment, and reviewed correspondence workflows. No real credit data ingestion or outbound dispute submission is implemented.
+No real credit reports, uploads, payments, tax or bankruptcy filings, outbound disputes, lender applications or AI provider are enabled. Accurate negative credit history cannot be promised away. Business-name vehicle financing can still create personal liability.
 
-Build with `npm run build`, then run the compiled server with `npm start`.
+## Operations and next steps
 
-See `DEPLOYMENT.md` for Hostinger settings and `docs/STAGING_STATUS.md` for verified implementation status and hosting blockers.
+- [Deployment](DEPLOYMENT.md)
+- [Architecture and limitations](docs/ARCHITECTURE.md)
+- [Staging status](docs/STAGING_STATUS.md)
+- [Production activation gates](docs/PRODUCTION_GATES.md)
+- [Editorial sources](docs/CONTENT_SOURCES.md)
+
+Private account configuration is documented in `.env.example`. Never commit actual credentials. A 99.9% availability target requires independent monitoring, measurement, resilience and recovery work; this single staging instance carries no such guarantee.

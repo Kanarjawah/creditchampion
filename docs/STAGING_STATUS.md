@@ -1,35 +1,15 @@
-# Staging readiness report
+# Credit Champion staging status
 
-## Verified locally
+## Hosting baseline
 
-The existing Express and TypeScript architecture is retained. The funding matcher build failure is fixed. Compiled JavaScript is used for deployment, with a reproducible npm lockfile. Zod was upgraded to resolve the dependency audit finding. The demo sends no-cache, no-index, frame-denial, and MIME-sniffing prevention headers. Parser failures return generic JSON errors without request data or stack traces.
+Credit Champion was deployed and verified at https://darkgoldenrod-shrew-304046.hostingersite.com/ using Node.js 22, Express and compiled entry `dist/server.js`. The initial deployed source was c69ed75a299401d22c8f2c84a386adedba2ac1df. Hostinger build 01a1d8a3-1d60-7351-ac33-3816bbcea79f completed successfully. HTTPS, homepage, health, day 1/day 90 plans and invalid-day handling were verified.
 
-Funding verification dates that are invalid, in the future, or older than 90 days require review. Seed directory entries have no claimed verification dates until their sources are actually reviewed. Blank evidence references block the synthetic dispute checker. This checker does not verify evidence contents or authorize a real submission.
+Set NODE_ENV=production and NPM_CONFIG_INCLUDE=dev in Hostinger. The second setting is required because the build needs TypeScript and production NODE_ENV otherwise omits development dependencies. Remove any manually entered PORT override; the app uses Hostinger's assigned port.
 
-Validation covers TypeScript, compilation, engine and workflow tests, date verification, homepage content, health, plan boundaries, malformed JSON, oversized bodies, and absence of a live submission route. GitHub Actions is configured to run these checks and audit dependencies on pushes and pull requests. Hosted CI results must be checked separately after pushing.
+## v0.3 expanded implementation
 
-## Hosting blocker
+Local validation covers 22 tests, TypeScript compilation, frontend JavaScript syntax and dependency audit. The suite includes an embedded PostgreSQL engine test of the actual schema, invitation-only registration, login, encrypted email, MFA, replay prevention, origin enforcement, ownership, cross-tenant access denial and case approval ordering. This is not a hosted-database test or independent security assessment.
 
-No Hostinger site or deployment has been created during this work. No staging URL or deployed commit is available.
+The expanded public dashboard includes credit planning, negative-item education, bankruptcy guidance, tax preparation education, business vehicle tools, lender/grant-source discovery and a synthetic agency workflow. The account and PostgreSQL foundation is implemented but remains disabled on the host pending database/secrets provisioning. See ARCHITECTURE.md and PRODUCTION_GATES.md for exact boundaries.
 
-The cloud browser failed before loading hPanel: `Protocol error (Storage.setCookies): Invalid cookie fields`. The Hostinger hosting MCP server is not configured, and adding it failed because the session's configuration directory is read-only. Hostinger Mail tools do not manage hosting. The hosting plan, SSL, database availability, and Git integration remain uninspected.
-
-## Module status
-
-| Module | Status |
-| :--- | :--- |
-| Demo dashboard and 90-day plan | Implemented and tested locally |
-| Dispute gates and workflow transitions | Synthetic prototype only |
-| Funding matcher | Library implemented; no website integration |
-| Institution directory | Four unverified seed source entries; no nationwide import |
-| Registration, login, MFA | Not implemented |
-| PostgreSQL and migrations | Not implemented |
-| Customer, agency, and admin portals | Not implemented |
-| Secure documents and audit storage | Not implemented |
-| AI provider and background jobs | Not implemented |
-| Credit bureau, postal, notification, payment integrations | Not implemented |
-| Jurisdiction compliance registry | Not implemented; legal review outstanding |
-
-## Next milestone
-
-Restore Hostinger hosting access, inspect the plan, and deploy this demo using DEPLOYMENT.md. Verify HTTPS, homepage, and health before moving to authentication and persistence. Hosting credentials and integration secrets must be entered through secure provider controls, never source code or chat. There is no production-readiness claim.
+The expanded source must be uploaded and its hosted build and browser workflows verified before the v0.3 deployment is reported complete. All live financial processing remains disabled. No production-readiness or measured 99.9% availability claim is made.
