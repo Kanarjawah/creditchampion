@@ -1,14 +1,51 @@
-# Credit Champion deployment checklist
+# Credit Champion staging deployment
 
-**Demo only. Do not process real credit records.**
+This release is a synthetic-data demonstration. Real credit processing, registration, uploads, paid subscriptions, and outbound submissions are not implemented or enabled.
 
-1. Verify GitHub repository visibility and make it private before adding sensitive materials.
-2. Install Node.js 22, run `npm install`, `npm test` and `npm run typecheck`.
-3. Run `npm start` with `PORT` set by the hosting provider.
-4. Check `/health` returns `realCreditDataEnabled: false`.
-5. Use a staging domain and HTTPS. No real customer data.
-6. Inspect Hostinger Web Apps runtime support and deployment integration.
-7. Before production: implement persistence, authentication, MFA, tenant isolation, secure secrets, encrypted document storage, state-law review, authorized bureau contracts, consent evidence, audits, and an independent security assessment.
-8. Never automatically submit disputed information without genuine evidence, customer authorization, applicable legal checks, and appropriate oversight.
+## Build and run
 
-No production-ready Docker image is provided.
+Use Node.js 22 and the committed lockfile. Install development dependencies during the build because TypeScript is a build tool.
+
+1. Install: `npm ci`
+2. Validate: `npm run typecheck` and `npm test`
+3. Build: `npm run build`
+4. Audit: `npm audit`
+5. Start: `npm start`
+
+The runtime starts compiled JavaScript at `dist/server.js` and binds to `0.0.0.0` using the hosting provider's `PORT`, defaulting to 3000. Development uses `npm run dev`. The compiled runtime does not require tsx or TypeScript. SIGTERM and SIGINT close the listener gracefully.
+
+## Hostinger target
+
+Create a separate Node.js staging application from `Kanarjawah/creditchampion`, branch `main`, using an included free staging subdomain. Do not reuse an existing website or purchase a service.
+
+| Setting | Value |
+| :--- | :--- |
+| Runtime | Node.js 22 |
+| Install | npm ci |
+| Build | npm run typecheck && npm test && npm run build |
+| Start | npm start |
+| Compiled entry | dist/server.js |
+| Environment | NODE_ENV=production |
+| Port | Provider-assigned PORT |
+| Database | None required for this demo |
+
+Confirm the plan supports an Express Node.js server. If it does not, do not replace the application with a static export. Verify supported start-command and entry-file settings in hPanel before starting the build.
+
+Do not add production credentials. Database, billing, and credit integrations are absent. Do not set feature flags suggesting those integrations are enabled.
+
+## Acceptance checks
+
+Use HTTPS and verify actual Credit Champion content, rather than relying only on HTTP 200.
+
+1. `/` returns the Credit Champion demonstration and its synthetic-data disclosure.
+2. `/health` returns `ok: true`, `environment: demo`, and `realCreditDataEnabled: false`.
+3. `/api/demo/plan/1` and `/api/demo/plan/90` return phases and tasks.
+4. `/api/demo/plan/91` returns HTTP 400.
+5. POST `/api/demo/dispute/check` with an invalid object returns HTTP 400.
+6. No live submission endpoint exists.
+
+Record the actual staging URL, deployed commit, build logs, HTTPS result, and acceptance results. Only then configure redeployment on pushes using the same settings. Never record a guessed URL as a deployment result.
+
+## Production gates
+
+Before real customers: implement authentication and MFA, database migrations, tenant isolation, protected storage, consent evidence, audit records, rate limits, monitored jobs, backup and restore, provider agreements, reviewed jurisdiction rules, billing controls, and independent security testing. A dependency audit and demo HTTP tests do not establish production readiness.

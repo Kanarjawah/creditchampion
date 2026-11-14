@@ -7,3 +7,5 @@ test('missing consent blocks submission',()=>assert.equal(canSubmit({...base,con
 test('missing evidence blocks submission',()=>assert.equal(canSubmit({...base,findings:[{...base.findings[0],evidence:[]}]}).allowed,false));
 test('duplicate delivery blocks submission',()=>assert.equal(canSubmit({...base,delivery:{tracking:'test',sentAt:'2026-11-13'}}).allowed,false));
 test('90 day plan boundaries',()=>{assert.equal(plan90Days(1).phase,'Onboarding and analysis');assert.equal(plan90Days(90).phase,'Review and long-term improvement');assert.throws(()=>plan90Days(91))});
+
+test('blank evidence identifiers block submission',()=>assert.equal(canSubmit({...base,findings:[{...base.findings[0],evidence:['   ']}]}).allowed,false));

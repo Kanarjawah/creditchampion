@@ -6,7 +6,7 @@ export function canSubmit(c:Case):{allowed:boolean;reasons:string[]} {
  if(!c.consent) reasons.push('Missing customer authorization');
  if(!c.approved) reasons.push('Customer has not approved dispute');
  if(!c.legalRuleVerified) reasons.push('Legal rule not verified');
- if(!c.findings.length || c.findings.some(f=>!f.verified || !f.evidence.length)) reasons.push('Findings lack verified supporting evidence');
+ if(!c.findings.length || c.findings.some(f=>!f.verified || !f.evidence.length || f.evidence.some(item=>!item.trim()))) reasons.push('Findings lack verified supporting evidence');
  if(c.status!=='ready_to_send') reasons.push('Case not ready to send');
  if(c.delivery) reasons.push('Already submitted');
  return {allowed:reasons.length===0,reasons};

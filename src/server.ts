@@ -1,14 +1,8 @@
-import express from 'express';
-import {z} from 'zod';
-import {canSubmit,plan90Days,type Case} from './engine.js';
-import {scheduledTasks} from './workflow.js';
-const app=express();
-app.disable('x-powered-by');
-app.use(express.json({limit:'100kb'}));
-app.get('/health',(_req,res)=>res.json({ok:true,environment:'demo',realCreditDataEnabled:false}));
-app.get('/api/demo/plan/:day',(req,res)=>{try{res.json({...plan90Days(Number(req.params.day)),...scheduledTasks(Number(req.params.day))})}catch{res.status(400).json({error:'Day must be an integer from 1 to 90'})}});
-const caseSchema=z.object({id:z.string(),customerId:z.string(),status:z.enum(['intake','needs_evidence','awaiting_approval','ready_to_send','submitted','awaiting_response','resolved','escalated']),findings:z.array(z.object({id:z.string(),category:z.string(),description:z.string(),evidence:z.array(z.string()),verified:z.boolean()})),consent:z.boolean(),approved:z.boolean(),legalRuleVerified:z.boolean(),delivery:z.object({tracking:z.string(),sentAt:z.string()}).optional()});
-app.post('/api/demo/dispute/check',(req,res)=>{const parsed=caseSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Invalid case',details:parsed.error.flatten()});res.json(canSubmit(parsed.data as Case))});
-app.get('/',(_req,res)=>res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Credit Champion Demo</title><style>body{font:16px system-ui;background:#0b1730;color:#eef5ff;margin:0}main{max-width:900px;margin:5rem auto;padding:2rem}.card{background:#172949;padding:2rem;border-radius:18px;margin:1rem 0}button{background:#59b8e8;border:0;padding:1rem;border-radius:8px;cursor:pointer}input{padding:1rem;width:90px}small{color:#b7c9df}</style></head><body><main><h1>CREDIT CHAMPION</h1><p>Your credit health journey, made clearer.</p><div class="card"><h2>90-day credit health plan</h2><label>Day <input id="day" type="number" min="1" max="90" value="1"></label> <button onclick="load()">View my plan</button><div id="result"></div></div><div class="card"><h2>Built with safeguards</h2><p>Evidence-based disputes, customer authorization, legal review and transparent tracking.</p><small>Demo only. No real credit report access, submissions, payment processing or guaranteed score changes.</small></div></main><script>async function load(){const r=await fetch('/api/demo/plan/'+document.getElementById('day').value);const x=await r.json();document.getElementById('result').textContent=x.phase?x.phase+' | '+x.actions.join(' • '):x.error}load()</script></body></html>`));
+import {app} from './app.js';
 const port=Number(process.env.PORT||3000);
-app.listen(port,()=>console.log(`Credit Champion demo on http://localhost:${port}`));
+if(!Number.isInteger(port)||port<1||port>65535)throw new Error('PORT must be an integer from 1 to 65535');
+const server=app.listen(port,'0.0.0.0',()=>console.log(`Credit Champion demo listening on port ${port}`));
+for(const signal of ['SIGTERM','SIGINT'] as const)process.once(signal,()=>{
+ server.close(()=>process.exit(0));
+ setTimeout(()=>process.exit(1),10000).unref();
+});
