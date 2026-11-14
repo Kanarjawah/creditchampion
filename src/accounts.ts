@@ -3,6 +3,7 @@ import {rateLimit} from 'express-rate-limit';
 import {z} from 'zod';
 import {cipher,equal,newTotpSecret,passwordHash,passwordValid,randomToken,tokenHash,verifyTotp} from './crypto.js';
 import {Store,type Actor} from './store.js';
+import {hybridAccountRoutes} from './hybrid.js';
 export type AccountConfig={enabled:boolean;origin:string;encryptionKey:string;registrationCode:string;secure:boolean};
 export const accountConfig=():AccountConfig=>({enabled:process.env.ACCOUNT_MODE==='private_staging',origin:process.env.APP_ORIGIN||'',encryptionKey:process.env.DATA_ENCRYPTION_KEY||'',registrationCode:process.env.STAGING_REGISTRATION_CODE||'',secure:process.env.NODE_ENV==='production'});
 const credentials=z.object({email:z.string().email().max(254).transform(x=>x.toLowerCase().trim()),password:z.string().min(14).max(128)});
@@ -41,5 +42,6 @@ export function accounts(store:Store|undefined,config:AccountConfig){
  router.post('/cases',async(req,res)=>{const parsed=z.object({category:z.enum(['late_payment','collection','charge_off','repossession','bankruptcy','inquiry','identity','other'])}).strict().safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Choose a supported category; no customer details or reports accepted.'});const row=await store!.createCase(res.locals.actor,parsed.data.category);await store!.audit(res.locals.actor,'case.created',row.id);res.status(201).json(row);});
  router.post('/cases/:id/:action',async(req,res)=>{if(!z.uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid case ID'});const a=res.locals.actor as Actor;const existing=await store!.caseById(a,String(req.params.id));if(!existing)return res.status(404).json({error:'Case not found'});let row;if(req.params.action==='approve')row=await store!.approveCase(a,existing.id);else if(req.params.action==='review-evidence')row=await store!.reviewEvidence(a,existing.id);else return res.status(404).json({error:'Action not available'});if(!row)return res.status(409).json({error:'Role or workflow does not permit this action'});await store!.audit(a,`case.${req.params.action}`,row.id);res.json(row);});
  router.get('/audit',async(_req,res)=>{const rows=await store!.auditEvents(res.locals.actor);if(!rows)return res.status(403).json({error:'Role not permitted'});res.json({events:rows});});
+ if(store)router.use(hybridAccountRoutes(store));
  return router;
 }

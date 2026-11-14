@@ -11,6 +11,7 @@ import {matchFunding} from './funding.js';
 import {loanEstimate,loanSchema,utilization,utilizationSchema,cashflow,cashflowSchema,reviewIssue,issueSchema} from './tools.js';
 import {accounts,accountConfig,type AccountConfig} from './accounts.js';
 import {configuredStore,type Store} from './store.js';
+import {services,readinessSchema,businessReadiness,intakeSchema,publicReviews} from './hybrid.js';
 export function createApp(store?:Store,config:AccountConfig=accountConfig()){
  const app=express();
  app.disable('x-powered-by');
@@ -20,7 +21,11 @@ export function createApp(store?:Store,config:AccountConfig=accountConfig()){
  app.get('/health',(_req,res)=>res.json({ok:true,environment:'demo',realCreditDataEnabled:false}));
  app.get('/ready',async(_req,res)=>{if(config.enabled){if(!store)return res.status(503).json({ready:false});await store.db.query('SELECT 1');}res.json({ready:true,mode:'synthetic_staging'});});
  app.use('/api',rateLimit({windowMs:60*1000,limit:300,standardHeaders:'draft-7',legacyHeaders:false}));
- app.get('/api/platform',(_req,res)=>res.json({name:'Credit Champion',version:'0.3.1',mode:'synthetic_staging',realCreditDataEnabled:false,accountsConfigured:!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode),features:{education:true,planning:true,fundingDirectory:true,loanCalculator:true,utilizationCalculator:true,cashflowCalculator:true,disputeReview:true,liveCredit:false,uploads:false,payments:false,taxFiling:false,bankruptcyFiling:false,aiProvider:false},roles:['Super Administrator','Compliance Administrator','Credit Specialist','Agency Owner','Agency Employee','Individual Customer','Business Customer','Customer Support'],reliability:{target:'99.9%',measuredUptime:null,status:'Not measured; single staging instance, no high-availability guarantee'}}));
+ app.get('/api/platform',(_req,res)=>res.json({name:'Credit Champion',version:'0.4.0',mode:'synthetic_staging',realCreditDataEnabled:false,accountsConfigured:!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode),features:{education:true,planning:true,fundingDirectory:true,loanCalculator:true,utilizationCalculator:true,cashflowCalculator:true,disputeReview:true,hybridJourneys:true,reviewDisplay:true,liveCredit:false,uploads:false,payments:false,taxFiling:false,bankruptcyFiling:false,aiProvider:false},roles:['Super Administrator','Compliance Administrator','Credit Specialist','Agency Owner','Agency Employee','Individual Customer','Business Customer','Customer Support'],reliability:{target:'99.9%',measuredUptime:null,status:'Not measured; single staging instance, no high-availability guarantee'}}));
+ app.get('/api/hybrid',(_req,res)=>res.json({model:'Hybrid agency and SaaS',services,agencyServicesLive:false,reportingIntegrationsConnected:false,taxPreparationLive:false}));
+ app.get('/api/reviews',publicReviews(store,config.enabled));
+ app.post('/api/tools/business-readiness',(req,res)=>res.json(businessReadiness(readinessSchema.parse(req.body))));
+ app.post('/api/tools/service-plan',(req,res)=>{const x=intakeSchema.parse(req.body);res.json({service:x.service,goal:x.goal,track:services.find(s=>s.id===x.service),submissionOccurred:false});});
  app.get('/api/guides',(_req,res)=>res.json({guides,sources}));
  app.get('/api/compliance',(_req,res)=>res.json({rules:complianceRules,reviewedAt:'2026-11-13',liveServicesEnabled:false}));
  app.get('/api/funding',(_req,res)=>res.json({products:fundingProducts,disclosure:'Curated source directory, not a nationwide feed, open grant inventory, lender endorsement or credit offer. Unknown criteria require provider review.'}));
