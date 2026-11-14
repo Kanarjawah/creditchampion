@@ -19,6 +19,8 @@ import {services,readinessSchema,businessReadiness,intakeSchema,publicReviews} f
 export function createApp(store?:Store,config:AccountConfig=accountConfig()){
  const app=express();
  app.disable('x-powered-by');
+ // Hostinger CDN appends the verified connecting address last. Never trust every forwarded hop.
+ app.set('trust proxy',process.env.NODE_ENV==='production'?1:'loopback');
  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'","data:"],connectSrc:["'self'"],frameAncestors:["'none'"],formAction:["'self'"],baseUri:["'none'"]}},referrerPolicy:{policy:'no-referrer'}}));
  app.use((_req,res,next)=>{res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'});next();});
  app.use('/api/account/documents',express.json({limit:'1500kb'}));
