@@ -26,3 +26,17 @@ The application workflows are implemented; not every external service is live. U
 ## Live checks before final review
 
 Native MySQL schema initialization and private staging listener were confirmed in Hostinger runtime logs. External HTTP smoke passed all 17 expected statuses, including readiness 200 and unauthenticated private access 401. Public contact requests remained closed (503), and the activation page correctly displayed MySQL/accounts configured with provider/scanner/payment/email gates closed. The Hostinger production deployment uses the vendor-documented one-proxy-hop setting. The Node port must remain behind the hosting/CDN proxy; IP limits are not an authorization boundary. Local development trusts loopback only.
+
+## Final deployed state
+
+Verified November 14, 2026 at approximately 8:53 AM America/Phoenix.
+
+- Deployed source: 43a9baeb2d2305c150d43b92dc202b83cd16aacf.
+- Hostinger build: 01a1dac1-342a-7101-bc31-846790d4f092, Completed/current.
+- Application: 0.5.0, native Hostinger MySQL connected and schema initialized.
+- Final CI: https://github.com/Kanarjawah/creditchampion/actions/runs/43612261981 , completed successfully with MySQL 8.0 and all 27 tests.
+- Final live smoke: all 17 expected HTTP statuses passed. Readiness was 200; unauthenticated private cases, account and operations routes returned 401.
+- Runtime logs confirmed migrations and listener startup, with no remaining proxy-header validation error or startup failure in the current deployment.
+- Browser confirmed owner registration/sign-in forms, public agency operations and activation pages, and closed consultation collection. At 390 by 844, document width was 375 with no horizontal document overflow; mobile Consultation navigation worked.
+- Private UI workflows were validated by repository/API tests. The live first-owner claim was intentionally left for the user to set their own password and authenticator.
+- No external database subscription, default administrator password, sample customer review, live charge, tax transmission or native credit-reporting connection was created.
