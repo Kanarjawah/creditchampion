@@ -1,16 +1,13 @@
-import {Pool} from 'pg';
+import {databaseFromEnv,transaction,type DB} from './database.js';
+export type {DB} from './database.js';
 import {randomUUID} from 'node:crypto';
-export interface DB {query(sql:string,params?:any[]):Promise<{rows:any[];rowCount?:number|null}>}
 export type Actor={id:string;tenant_id:string;role:string;mfa_enabled:boolean;mfa_verified:boolean};
 const staff=new Set(['super_admin','compliance_admin','credit_specialist','agency_owner','agency_employee']);
 export class Store {
  constructor(public db:DB){}
  async register(emailLookup:string,emailCipher:string,passwordHash:string,business:boolean){
   const tenant=randomUUID(),id=randomUUID();
-  const r=await this.db.query(`WITH t AS (INSERT INTO tenants(id) VALUES($1) RETURNING id)
-   INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role)
-   SELECT $2,t.id,$3,$4,$5,$6 FROM t RETURNING id,tenant_id,role,mfa_enabled`,[tenant,id,emailLookup,emailCipher,passwordHash,business?'business_customer':'individual_customer']);
-  return r.rows[0] as Actor;
+  return transaction(this.db,async db=>{await db.query('INSERT INTO tenants(id) VALUES($1)',[tenant]);return (await db.query('INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,tenant_id,role,mfa_enabled',[id,tenant,emailLookup,emailCipher,passwordHash,business?'business_customer':'individual_customer'])).rows[0] as Actor;});
  }
  async byEmail(lookup:string){return (await this.db.query('SELECT * FROM users WHERE email_lookup=$1',[lookup])).rows[0];}
  async createSession(hash:string,user:string){await this.db.query(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '10 minutes')`,[hash,user]);}
@@ -29,4 +26,4 @@ export class Store {
  async reviewEvidence(a:Actor,id:string){if(!['credit_specialist','compliance_admin','super_admin'].includes(a.role))return undefined;return (await this.db.query(`UPDATE cases SET evidence_reviewed=true,status='awaiting_approval',updated_at=now() WHERE id=$1 AND tenant_id=$2 AND status='needs_evidence' RETURNING id,status`,[id,a.tenant_id])).rows[0];}
  async auditEvents(a:Actor){if(!['super_admin','compliance_admin','agency_owner'].includes(a.role))return null;return (await this.db.query('SELECT id,actor_id,action,resource_id,created_at FROM audit_events WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100',[a.tenant_id])).rows;}
 }
-export function configuredStore(){if(!process.env.DATABASE_URL)return undefined;return new Store(new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DB_SSL==='require'?{rejectUnauthorized:true}:undefined,max:10,connectionTimeoutMillis:5000,statement_timeout:10000}));}
+export function configuredStore(){const db=databaseFromEnv();return db?new Store(db):undefined;}

@@ -4,6 +4,10 @@ import {z} from 'zod';
 import {cipher,equal,newTotpSecret,passwordHash,passwordValid,randomToken,tokenHash,verifyTotp} from './crypto.js';
 import {Store,type Actor} from './store.js';
 import {hybridAccountRoutes} from './hybrid.js';
+import {agencyRoutes} from './operations.js';
+import {vaultRoutes} from './vault.js';
+import {transaction} from './database.js';
+import {integrationRoutes} from './integrations.js';
 export type AccountConfig={enabled:boolean;origin:string;encryptionKey:string;registrationCode:string;secure:boolean};
 export const accountConfig=():AccountConfig=>({enabled:process.env.ACCOUNT_MODE==='private_staging',origin:process.env.APP_ORIGIN||'',encryptionKey:process.env.DATA_ENCRYPTION_KEY||'',registrationCode:process.env.STAGING_REGISTRATION_CODE||'',secure:process.env.NODE_ENV==='production'});
 const credentials=z.object({email:z.string().email().max(254).transform(x=>x.toLowerCase().trim()),password:z.string().min(14).max(128)});
@@ -18,10 +22,10 @@ export function accounts(store:Store|undefined,config:AccountConfig){
  const authLimiter=rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:'draft-7',legacyHeaders:false});
  const cookie={httpOnly:true,secure:config.secure,sameSite:'strict' as const,path:'/',maxAge:8*60*60*1000};
  router.post('/register',authLimiter,async(req,res)=>{
-  const parsed=credentials.extend({business:z.boolean().default(false),registrationCode:z.string().max(256)}).safeParse(req.body);
+  const parsed=credentials.extend({business:z.boolean().default(false),registrationCode:z.string().max(256).optional(),invitation:z.string().min(20).max(256).optional()}).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Use a valid email and a password of 14 to 128 characters.'});
-  if(!equal(parsed.data.registrationCode,config.registrationCode))return res.status(403).json({error:'Staging invitation required'});
-  try{const a=await store!.register(crypt!.lookup(parsed.data.email),crypt!.encrypt(parsed.data.email),await passwordHash(parsed.data.password),parsed.data.business);await store!.audit(a,'account.created');return res.status(201).json({created:true,message:'Sign in and enroll an authenticator to access the private staging workspace.'});}
+  if(!parsed.data.invitation&&!equal(parsed.data.registrationCode||'',config.registrationCode))return res.status(403).json({error:'Staging invitation required'});
+  try{const a=parsed.data.invitation?await transaction(store!.db,async db=>{const invite=(await db.query('SELECT * FROM agency_invites WHERE token_hash=$1 AND email_lookup=$2 AND used_at IS NULL AND expires_at>now() FOR UPDATE',[tokenHash(parsed.data.invitation!),crypt!.lookup(parsed.data.email)])).rows[0];if(!invite)return undefined;const id=(await import('node:crypto')).randomUUID();await db.query('INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role) VALUES($1,$2,$3,$4,$5,$6)',[id,invite.tenant_id,invite.email_lookup,crypt!.encrypt(parsed.data.email),await passwordHash(parsed.data.password),invite.role]);await db.query('UPDATE agency_invites SET used_at=now() WHERE id=$1',[invite.id]);return {id,tenant_id:invite.tenant_id,role:invite.role,mfa_enabled:false,mfa_verified:false};}):await store!.register(crypt!.lookup(parsed.data.email),crypt!.encrypt(parsed.data.email),await passwordHash(parsed.data.password),parsed.data.business);if(!a)return res.status(403).json({error:'Invitation invalid or expired'});await store!.audit(a,'account.created');return res.status(201).json({created:true,message:'Sign in and enroll an authenticator to access the private staging workspace.'});}
   catch(error){if((error as {code?:string}).code==='23505')return res.status(409).json({error:'Account cannot be created. Use an existing account or a different staging identity.'});throw error;}
  });
  router.post('/login',authLimiter,async(req,res)=>{
@@ -42,6 +46,6 @@ export function accounts(store:Store|undefined,config:AccountConfig){
  router.post('/cases',async(req,res)=>{const parsed=z.object({category:z.enum(['late_payment','collection','charge_off','repossession','bankruptcy','inquiry','identity','other'])}).strict().safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Choose a supported category; no customer details or reports accepted.'});const row=await store!.createCase(res.locals.actor,parsed.data.category);await store!.audit(res.locals.actor,'case.created',row.id);res.status(201).json(row);});
  router.post('/cases/:id/:action',async(req,res)=>{if(!z.uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid case ID'});const a=res.locals.actor as Actor;const existing=await store!.caseById(a,String(req.params.id));if(!existing)return res.status(404).json({error:'Case not found'});let row;if(req.params.action==='approve')row=await store!.approveCase(a,existing.id);else if(req.params.action==='review-evidence')row=await store!.reviewEvidence(a,existing.id);else return res.status(404).json({error:'Action not available'});if(!row)return res.status(409).json({error:'Role or workflow does not permit this action'});await store!.audit(a,`case.${req.params.action}`,row.id);res.json(row);});
  router.get('/audit',async(_req,res)=>{const rows=await store!.auditEvents(res.locals.actor);if(!rows)return res.status(403).json({error:'Role not permitted'});res.json({events:rows});});
- if(store)router.use(hybridAccountRoutes(store));
+ if(store){router.use(hybridAccountRoutes(store));router.use(agencyRoutes(store,config.encryptionKey));router.use(vaultRoutes(store,config.encryptionKey));router.use(integrationRoutes(store,config.encryptionKey));}
  return router;
 }

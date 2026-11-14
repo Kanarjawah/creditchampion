@@ -11,17 +11,25 @@ import {matchFunding} from './funding.js';
 import {loanEstimate,loanSchema,utilization,utilizationSchema,cashflow,cashflowSchema,reviewIssue,issueSchema} from './tools.js';
 import {accounts,accountConfig,type AccountConfig} from './accounts.js';
 import {configuredStore,type Store} from './store.js';
+import {leadRoutes} from './leads.js';
+import {activationStatus,providerCatalog} from './integrations.js';
+import {OperationError} from './operations.js';
+import {configuredScanner} from './vault.js';
 import {services,readinessSchema,businessReadiness,intakeSchema,publicReviews} from './hybrid.js';
 export function createApp(store?:Store,config:AccountConfig=accountConfig()){
  const app=express();
  app.disable('x-powered-by');
  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'","data:"],connectSrc:["'self'"],frameAncestors:["'none'"],formAction:["'self'"],baseUri:["'none'"]}},referrerPolicy:{policy:'no-referrer'}}));
  app.use((_req,res,next)=>{res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'});next();});
+ app.use('/api/account/documents',express.json({limit:'1500kb'}));
  app.use(express.json({limit:'100kb'}));
  app.get('/health',(_req,res)=>res.json({ok:true,environment:'demo',realCreditDataEnabled:false}));
  app.get('/ready',async(_req,res)=>{if(config.enabled){if(!store)return res.status(503).json({ready:false});await store.db.query('SELECT 1');}res.json({ready:true,mode:'synthetic_staging'});});
  app.use('/api',rateLimit({windowMs:60*1000,limit:300,standardHeaders:'draft-7',legacyHeaders:false}));
- app.get('/api/platform',(_req,res)=>res.json({name:'Credit Champion',version:'0.4.0',mode:'synthetic_staging',realCreditDataEnabled:false,accountsConfigured:!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode),features:{education:true,planning:true,fundingDirectory:true,loanCalculator:true,utilizationCalculator:true,cashflowCalculator:true,disputeReview:true,hybridJourneys:true,reviewDisplay:true,liveCredit:false,uploads:false,payments:false,taxFiling:false,bankruptcyFiling:false,aiProvider:false},roles:['Super Administrator','Compliance Administrator','Credit Specialist','Agency Owner','Agency Employee','Individual Customer','Business Customer','Customer Support'],reliability:{target:'99.9%',measuredUptime:null,status:'Not measured; single staging instance, no high-availability guarantee'}}));
+ app.get('/api/platform',(_req,res)=>res.json({name:'Credit Champion',version:'0.5.0',mode:'synthetic_staging',realCreditDataEnabled:false,accountsConfigured:!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode),features:{education:true,planning:true,fundingDirectory:true,loanCalculator:true,utilizationCalculator:true,cashflowCalculator:true,disputeReview:true,hybridJourneys:true,reviewDisplay:true,liveCredit:false,uploads:false,payments:false,taxFiling:false,bankruptcyFiling:false,aiProvider:false},roles:['Super Administrator','Compliance Administrator','Credit Specialist','Agency Owner','Agency Employee','Individual Customer','Business Customer','Customer Support'],reliability:{target:'99.9%',measuredUptime:null,status:'Not measured; single staging instance, no high-availability guarantee'}}));
+ app.get('/api/activation',(_q,r)=>r.json(activationStatus(!!(store&&config.enabled&&config.encryptionKey&&config.origin&&config.registrationCode))));
+ app.get('/api/providers',(_q,r)=>r.json({providers:providerCatalog}));
+ app.use('/api/leads',leadRoutes(config.enabled?store:undefined,config.encryptionKey,config.origin));
  app.get('/api/hybrid',(_req,res)=>res.json({model:'Hybrid agency and SaaS',services,agencyServicesLive:false,reportingIntegrationsConnected:false,taxPreparationLive:false}));
  app.get('/api/reviews',publicReviews(store,config.enabled));
  app.post('/api/tools/business-readiness',(req,res)=>res.json(businessReadiness(readinessSchema.parse(req.body))));
@@ -42,6 +50,7 @@ export function createApp(store?:Store,config:AccountConfig=accountConfig()){
  app.use(express.static(fileURLToPath(new URL('../public/',import.meta.url)),{etag:false,lastModified:false,index:'index.html'}));
  app.use((_req,res)=>res.status(404).json({error:'Not found'}));
  app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
+  if(error instanceof OperationError)return res.status(error.status).json({error:error.message});
   if(error instanceof z.ZodError)return res.status(400).json({error:'Invalid input. Check the field ranges and use synthetic values only.'});
   const status=typeof error==='object'&&error!==null&&'status' in error?Number(error.status):500;
   res.status(status===413?413:status===400?400:500).json({error:status===413?'Request too large':status===400?'Invalid JSON request':'Internal server error'});

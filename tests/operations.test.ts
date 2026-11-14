@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile,readdir} from 'node:fs/promises';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {PGlite} from '@electric-sql/pglite';
+import mysql from 'mysql2/promise';
+import {Store,type Actor} from '../src/store.js';
+import {MysqlDB,type DB} from '../src/database.js';
+import {AgencyStore} from '../src/operations.js';
+import {HybridStore,ReviewStore} from '../src/hybrid.js';
+import {VaultStore,documentBytes} from '../src/vault.js';
+import {LeadStore,deliverOutbox,unsubscribeToken} from '../src/leads.js';
+import {createApp} from '../src/app.js';
+import type {AddressInfo} from 'node:net';
+import {totp} from '../src/crypto.js';
+import {cipher,passwordHash} from '../src/crypto.js';
+async function verifyOperations(db:DB){
+ const store=new Store(db),key=randomBytes(32).toString('base64'),crypt=cipher(key),hash=await passwordHash('a-long-test-password-only');
+ const customer=await store.register(crypt.lookup('client@example.test'),crypt.encrypt('client@example.test'),hash,false);
+ const foreign={...await store.register(crypt.lookup('foreign@example.test'),crypt.encrypt('foreign@example.test'),hash,false),mfa_verified:true} as Actor;
+ const managerId=randomUUID(),employeeId=randomUUID();for(const [id,role]of [[managerId,'agency_owner'],[employeeId,'agency_employee']])await db.query('INSERT INTO users(id,tenant_id,email_lookup,email_cipher,password_hash,role) VALUES($1,$2,$3,$4,$5,$6)',[id,customer.tenant_id,randomUUID(),crypt.encrypt('staff@example.test'),hash,role]);
+ const client={...customer,mfa_verified:true} as Actor,manager={...client,id:managerId,role:'agency_owner'},employee={...client,id:employeeId,role:'agency_employee'};
+ const agency=new AgencyStore(store,key),hybrid=new HybridStore(store);const request=await hybrid.request(client,{service:'personal',goal:'review_errors'});
+ await assert.rejects(()=>agency.request(foreign,request.id));await assert.rejects(()=>agency.assign(client,request.id,employeeId));assert.equal((await agency.dashboard(employee)).requests.length,0);
+ await agency.assign(manager,request.id,employeeId);assert.equal((await agency.dashboard(employee)).requests.length,1);
+ const task=await agency.addTask(employee,request.id,{title:'Review sample evidence'});await assert.rejects(()=>agency.taskStatus(client,task.id,'done'));await assert.rejects(()=>agency.taskStatus(foreign,task.id,'done'));await agency.taskStatus(employee,task.id,'done');assert.equal((await agency.dashboard(client)).tasks[0].status,'done');
+ const slot=await agency.addSlot(employee,new Date(Math.ceil((Date.now()+86400000)/1800000)*1800000).toISOString(),'personal');await assert.rejects(()=>agency.book(foreign,slot.id));await agency.book(client,slot.id);await assert.rejects(()=>agency.book(client,slot.id));await agency.cancelSlot(client,slot.id);
+ const pkg=await agency.addPackage(manager,{name:'Sample credit review',service:'personal',priceCents:10000,description:'Synthetic package for workflow testing only.',agreement:'Sample agreement text for testing. '.repeat(5)});assert.equal((await agency.packages(client)).length,0);await agency.publish(manager,pkg.id,true);const current=(await agency.packages(client))[0];await assert.rejects(()=>agency.accept(client,request.id,pkg.id,'0'.repeat(64)));const engagement=await agency.accept(client,request.id,pkg.id,current.agreement_hash);const invoice=await agency.invoice(manager,engagement.id,'SAMPLE-DONE-REFERENCE');assert.equal(invoice.status,'legal_review_required');await agency.cancelAgreement(client,engagement.id);assert.equal((await agency.invoices(client))[0].status,'void');
+ const body=Buffer.from('%PDF-1.7\nsynthetic fixture only\n%%EOF').toString('base64'),input={requestId:request.id,kind:'credit_record' as const,mime:'application/pdf' as const,content:body};assert.throws(()=>documentBytes({...input,mime:'image/png'}));await assert.rejects(()=>new VaultStore(store,key,undefined).upload(client,input));await assert.rejects(()=>new VaultStore(store,key,async()=>false).upload(client,input));const vault=new VaultStore(store,key,async()=>true);const doc=await vault.upload(client,input);await assert.rejects(()=>vault.download(foreign,doc.id));assert.equal((await vault.download(employee,doc.id)).bytes.toString(),Buffer.from(body,'base64').toString());const stored=(await db.query('SELECT content_cipher FROM vault_documents WHERE id=$1',[doc.id])).rows[0];assert.notEqual(stored.content_cipher,body);await vault.remove(client,doc.id);await assert.rejects(()=>vault.download(client,doc.id));
+ const leads=new LeadStore(store,key,client.tenant_id);await leads.capture({name:'Synthetic lead',email:'lead@example.test',service:'business',contactConsent:true,marketingConsent:false,source:'website'});const lead=(await agency.leads(manager))[0];assert.equal(lead.email,'lead@example.test');assert.equal((await db.query('SELECT * FROM email_outbox WHERE lead_id=$1',[lead.id])).rows.length,1);let messages:any[]=[];assert.equal((await deliverOutbox(store,key,'https://app.example.test',async m=>{messages.push(m);},'Test business address')).sent,1);assert.equal(messages.length,1);assert.equal((await deliverOutbox(store,key,'https://app.example.test',async m=>{messages.push(m);},'Test business address')).sent,0);
+ await leads.capture({name:'Opted-in sample',email:'optin@example.test',service:'tax',contactConsent:true,marketingConsent:true,source:'website'});const opted=(await agency.leads(manager)).find(r=>r.email==='optin@example.test')!;await leads.unsubscribe(unsubscribeToken(opted.id,key));assert.equal((await db.query("SELECT * FROM email_outbox WHERE lead_id=$1 AND status='cancelled'",[opted.id])).rows.length,2);await assert.rejects(()=>agency.leads(client));
+ const reviews=new ReviewStore(store);const review=await reviews.submit(client,{displayName:'Sample Client',rating:1,service:'platform',body:'A synthetic firsthand test review.',publicationConsent:true});await reviews.moderate(manager,review.id,{action:'publish'});assert.equal((await reviews.publicReviews()).average,1);await reviews.withdraw(client);assert.equal((await reviews.publicReviews()).count,0);
+ const invitation=await agency.invite(manager,{email:'invited@example.test',role:'agency_employee'});
+ const app=createApp(store,{enabled:true,origin:'https://test.example',encryptionKey:key,registrationCode:'unused-staging-code',secure:true}),server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
+ try{const url='http://127.0.0.1:'+(server.address() as AddressInfo).port;let cookie='';const post=(path:string,body:unknown,origin='https://test.example')=>fetch(url+'/api/account'+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:cookie},body:JSON.stringify(body)});
+ const identity={email:'invited@example.test',password:'a-long-invited-test-password',invitation:invitation.token};assert.equal((await post('/register',identity,'https://foreign.test')).status,403);assert.equal((await post('/register',{...identity,email:'wrong@example.test'})).status,403);assert.equal((await post('/register',identity)).status,201);assert.equal((await post('/register',identity)).status,403);
+ const login=await post('/login',identity);assert.equal(login.status,200);cookie=(login.headers.get('set-cookie')||'').split(';')[0];assert.equal((await fetch(url+'/api/account/operations',{headers:{Cookie:cookie}})).status,403);
+ const secret=await (await post('/mfa/enroll',{})).json();assert.equal((await post('/mfa/verify',{code:totp(secret.secret,Math.floor(Date.now()/30000))})).status,200);assert.equal((await fetch(url+'/api/account/operations',{headers:{Cookie:cookie}})).status,200);assert.equal((await post('/invoices/'+invoice.id+'/checkout',{})).status,503);assert.equal((await post('/logout',{})).status,200);
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
+
+ const audit=(await db.query('SELECT action FROM audit_events WHERE tenant_id=$1',[client.tenant_id])).rows;assert.ok(audit.some(r=>r.action==='document.downloaded'));assert.ok(audit.some(r=>r.action==='agreement.cancelled'));
+}
+test('agency workflows enforce tenant scope, roles, booking state, agreements, encrypted vault and consented follow-up',async()=>{const db=new PGlite();try{for(const file of (await readdir(new URL('../migrations/',import.meta.url))).filter(x=>x.endsWith('.sql')).sort())await db.exec(await readFile(new URL('../migrations/'+file,import.meta.url),'utf8'));await verifyOperations(db as unknown as DB);}finally{await db.close();}});
+test('MySQL agency and authentication repositories execute against a real isolated database',{skip:!process.env.TEST_MYSQL_URL},async()=>{const pool=mysql.createPool({uri:process.env.TEST_MYSQL_URL!,connectionLimit:4,dateStrings:true,timezone:'Z'});try{await verifyOperations(new MysqlDB(pool));}finally{await pool.end();}});
